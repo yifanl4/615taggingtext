@@ -1,0 +1,115 @@
+---
+title: "Exploring and Tagging Text"
+author: "Yifan Liu"
+date: "11/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+#require(devtools)
+#devtools::install_github("truenumbers/tnum/tnum")
+```
+
+## Loading the required package
+
+```{r}
+library(tnum)
+library(tidyverse)
+tnum.authorize()
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+```
+
+## Checking the existing phrase list
+
+```{r}
+tnum.getDatabasePhraseList("subject", levels=3)
+```
+
+## Quering all the sentences with "love" in Sense and Sensibility
+
+```{r}
+num1 = tnum.query("*sensibility* has text = REGEXP(\"love\")")
+num2 = tnum.query("*sensibility* has text = REGEXP(\"love\")", max = 200)
+textdf = tnum.objectsToDf(num2)
+```
+
+### Wordcloud for sentences containing "love"
+
+```{r}
+docs <- Corpus(VectorSource(num2))
+```
+
+```{r}
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "/")
+docs <- tm_map(docs, toSpace, "@")
+docs <- tm_map(docs, toSpace, "\\|")
+```
+```{r}
+#convert the text to lower case
+docs <- tm_map(docs, content_transformer(tolower))
+# Remove numbers
+docs <- tm_map(docs, removeNumbers)
+# Remove english common stopwords
+docs <- tm_map(docs, removeWords, stopwords("english"))
+# Remove your own stop word
+# specify your stopwords as a character vector
+docs <- tm_map(docs, removeWords, c("blabla1", "blabla2")) 
+# Remove punctuations
+docs <- tm_map(docs, removePunctuation)
+# Eliminate extra white spaces
+docs <- tm_map(docs, stripWhitespace)
+```
+```{r}
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+```
+
+```{r}
+set.seed(1234)
+wordcloud(words = d$word, freq = d$freq, min.freq = 1,
+          max.words=100, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+### Plot the positions of each sentence containing "love"
+
+```{r}
+piclove = tnum.makePhraseGraphFromPathList(textdf$subject)
+tnum.plotGraph(piclove, style = "nicely", size = 1000)
+```
+
+## Tagging each sentences with reference
+
+```{r}
+tnum.tagByQuery("*sensibility* has text = REGEXP(\"love\")", "reference:love")
+```
+
+```{r}
+num3 = tnum.query("@reference:love", max = 200)
+textdf3 = tnum.objectsToDf(num3)
+```
+
+## Plot of word "love" by chapters
+
+```{r}
+textdf4 = separate(textdf3, col = subject, c("book","chapter","other"), sep = "/", remove = FALSE)
+count_love = textdf4 %>% group_by(chapter) %>% summarise(count = n())
+count_love = separate(count_love, col = chapter, c("Chapter", "number"), sep = "-", remove = FALSE)
+ggplot(count_love, aes(x = number, y = count, color = number)) +
+  geom_bar(stat = "identity", fill = "white") +
+  labs(x = "Chapter Number", y = "Number of LOVE Appeared", title = "Appearance of LOVE in each Chapter")
+```
+
+From the plot we can tell that Chapter 3 in Jane Austen's book Sense and Sensibility contains the most word "love" and Chapter 49 ranks the second. In contrast, Chapter 1, 5, 7, 19, 21, 27, 33, 36, 39, 41, 42, and 48 have the least word "love" appearance. 
+
+
